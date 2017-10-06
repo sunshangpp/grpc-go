@@ -96,6 +96,7 @@ type Server struct {
 	cv     *sync.Cond
 	m      map[string]*service // service name -> service info
 	events trace.EventLog
+	quit   bool
 }
 
 type options struct {
@@ -485,8 +486,12 @@ func (s *Server) Serve(lis net.Listener) error {
 				continue
 			}
 			s.mu.Lock()
+			defer s.mu.Unlock()
 			s.printf("done serving; Accept = %v", err)
-			s.mu.Unlock()
+			if s.quit {
+				// Return nil if server is being stopped on by Stop() or GracefulStop()
+				return nil
+			}
 			return err
 		}
 		tempDelay = 0
@@ -1055,6 +1060,7 @@ func (s *Server) handleStream(t transport.ServerTransport, stream *transport.Str
 // errors.
 func (s *Server) Stop() {
 	s.mu.Lock()
+	s.quit = true
 	listeners := s.lis
 	s.lis = nil
 	st := s.conns
@@ -1085,6 +1091,7 @@ func (s *Server) Stop() {
 func (s *Server) GracefulStop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.quit = true
 	if s.conns == nil {
 		return
 	}
